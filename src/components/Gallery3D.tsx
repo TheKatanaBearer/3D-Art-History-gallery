@@ -44,6 +44,13 @@ export default function Gallery3D() {
   const mouseRef = useRef(new THREE.Vector2());
   const frameIdRef = useRef<number>(0);
   const hoveredPaintingRef = useRef<PaintingMeshData | null>(null);
+  const frameCountRef = useRef(0);
+  const directionRef = useRef(new THREE.Vector3());
+  const forwardRef = useRef(new THREE.Vector3());
+  const rightVecRef = useRef(new THREE.Vector3());
+  const eulerRef = useRef(new THREE.Euler(0, 0, 0, 'YXZ'));
+  const centerRef = useRef(new THREE.Vector2(0, 0));
+  const currentEraIdxRef = useRef(0);
 
   // ─── Build Corridor ─────────────────────────────────────────────
   const buildCorridor = useCallback((
@@ -199,12 +206,10 @@ export default function Gallery3D() {
       lightFixture.position.set(0, CORRIDOR_HEIGHT - 0.03, z);
       group.add(lightFixture);
 
-      // Spot light from ceiling
-      const spotLight = new THREE.SpotLight(0xffeedd, 3, 15, Math.PI / 4, 0.5, 1);
-      spotLight.position.set(0, CORRIDOR_HEIGHT - 0.1, z);
-      spotLight.target.position.set(0, 0, z);
-      group.add(spotLight);
-      group.add(spotLight.target);
+      // Cheap point light instead of spotlight (much faster)
+      const ptLight = new THREE.PointLight(0xffeedd, 2, 18, 2);
+      ptLight.position.set(0, CORRIDOR_HEIGHT - 0.2, z);
+      group.add(ptLight);
     }
 
     // Ambient light for corridor
@@ -232,23 +237,17 @@ export default function Gallery3D() {
     const loader = new THREE.TextureLoader();
 
     try {
-      const [blurredTex, clearTex] = await Promise.all([
-        new Promise<THREE.Texture>((resolve, reject) => {
-          loader.load(painting.image, resolve, undefined, reject);
-        }),
-        new Promise<THREE.Texture>((resolve, reject) => {
-          loader.load(painting.image, resolve, undefined, reject);
-        }),
-      ]);
+      // Load image once and share between both materials
+      const tex = await new Promise<THREE.Texture>((resolve, reject) => {
+        loader.load(painting.image, resolve, undefined, reject);
+      });
 
-      // Blurred texture
-      blurredTex.minFilter = THREE.LinearFilter;
-      blurredTex.magFilter = THREE.LinearFilter;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.anisotropy = 4;
 
-      // Clear texture
-      clearTex.minFilter = THREE.LinearMipmapLinearFilter;
-      clearTex.magFilter = THREE.LinearFilter;
-      clearTex.anisotropy = 16;
+      const blurredTex = tex;
+      const clearTex = tex;
 
       // Create frame
       const frameGroup = new THREE.Group();
@@ -332,17 +331,6 @@ export default function Gallery3D() {
         frameGroup.rotation.y = -Math.PI / 2;
       }
 
-      // Add spotlight for painting
-      const paintLight = new THREE.SpotLight(0xfff8e7, 2, 8, Math.PI / 6, 0.6, 1);
-      paintLight.position.set(
-        wallSide === 'left' ? xPos + 2 : xPos - 2,
-        CORRIDOR_HEIGHT - 0.5,
-        positionZ + corridorOffsetZ
-      );
-      paintLight.target = paintMesh;
-      scene.add(paintLight);
-      scene.add(paintLight.target);
-
       frameGroup.add(paintMesh);
       scene.add(frameGroup);
 
@@ -384,14 +372,13 @@ export default function Gallery3D() {
 
     // Renderer
     const renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: false,
       powerPreference: 'high-performance',
     });
     renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+    renderer.shadowMap.enabled = false;
+    renderer.toneMapping = THREE.ReinhardToneMapping;
     renderer.toneMappingExposure = 1.2;
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
@@ -509,19 +496,16 @@ export default function Gallery3D() {
     // ─── Animation Loop ──────────────────────────────────────────
     const animate = () => {
       frameIdRef.current = requestAnimationFrame(animate);
+      frameCountRef.current++;
 
       if (!selectedPainting && document.pointerLockElement === canvas) {
-        // Movement
-        const direction = new THREE.Vector3();
-        const forward = new THREE.Vector3(
-          -Math.sin(yawRef.current),
-          0,
-          -Math.cos(yawRef.current)
+        // Reuse vectors to avoid GC pressure
+        const direction = directionRef.current.set(0, 0, 0);
+        const forward = forwardRef.current.set(
+          -Math.sin(yawRef.current), 0, -Math.cos(yawRef.current)
         ).normalize();
-        const right = new THREE.Vector3(
-          Math.cos(yawRef.current),
-          0,
-          -Math.sin(yawRef.current)
+        const right = rightVecRef.current.set(
+          Math.cos(yawRef.current), 0, -Math.sin(yawRef.current)
         ).normalize();
 
         if (keysRef.current.has('KeyW') || keysRef.current.has('ArrowUp')) direction.add(forward);
@@ -533,26 +517,26 @@ export default function Gallery3D() {
           direction.normalize().multiplyScalar(MOVE_SPEED);
           camera.position.add(direction);
 
-          // Determine current era based on Z position
+          // Only update era state when the corridor actually changes
           const z = camera.position.z;
-          const corridorIdx = Math.round((-z) / CORRIDOR_SPACING);
-          const clampedIdx = Math.max(0, Math.min(corridors.length - 1, corridorIdx));
-          setCurrentEra(corridors[clampedIdx].era);
+          const corridorIdx = Math.max(0, Math.min(corridors.length - 1, Math.round((-z) / CORRIDOR_SPACING)));
+          if (corridorIdx !== currentEraIdxRef.current) {
+            currentEraIdxRef.current = corridorIdx;
+            setCurrentEra(corridors[corridorIdx].era);
+          }
         }
 
-        // Camera rotation
-        const euler = new THREE.Euler(pitchRef.current, yawRef.current, 0, 'YXZ');
-        camera.quaternion.setFromEuler(euler);
+        // Reuse euler
+        eulerRef.current.set(pitchRef.current, yawRef.current, 0);
+        camera.quaternion.setFromEuler(eulerRef.current);
       }
 
-      // Hover effect - glow when aiming at painting
-      if (document.pointerLockElement === canvas && !selectedPainting) {
-        const center = new THREE.Vector2(0, 0);
-        raycasterRef.current.setFromCamera(center, camera);
+      // Throttle hover raycasting to every 3 frames
+      if (frameCountRef.current % 3 === 0 && document.pointerLockElement === canvas && !selectedPainting) {
+        raycasterRef.current.setFromCamera(centerRef.current, camera);
         const meshes = paintingMeshesRef.current.map(p => p.mesh);
         const intersects = raycasterRef.current.intersectObjects(meshes, false);
 
-        // Reset previous hover
         if (hoveredPaintingRef.current) {
           hoveredPaintingRef.current.mesh.material = hoveredPaintingRef.current.blurredMaterial;
           hoveredPaintingRef.current = null;
@@ -562,10 +546,9 @@ export default function Gallery3D() {
           const hitMesh = intersects[0].object as THREE.Mesh;
           const paintingData = paintingMeshesRef.current.find(p => p.mesh === hitMesh);
           if (paintingData) {
-            // Show slightly less blurred when aimed at
             paintingData.mesh.material = paintingData.clearMaterial;
-            paintingData.clearMaterial.opacity = 0.92;
-            paintingData.clearMaterial.transparent = true;
+            (paintingData.clearMaterial as THREE.MeshStandardMaterial).opacity = 0.92;
+            (paintingData.clearMaterial as THREE.MeshStandardMaterial).transparent = true;
             hoveredPaintingRef.current = paintingData;
           }
         }
