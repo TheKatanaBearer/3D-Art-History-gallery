@@ -56,7 +56,9 @@ export default function Gallery3D() {
   const buildCorridor = useCallback((
     scene: THREE.Scene,
     corridor: Corridor,
-    offsetZ: number
+    offsetZ: number,
+    isFirst: boolean,
+    isLast: boolean
   ) => {
     const group = new THREE.Group();
     group.position.set(0, 0, offsetZ);
@@ -116,17 +118,22 @@ export default function Gallery3D() {
     rightWall.position.set(CORRIDOR_WIDTH / 2, CORRIDOR_HEIGHT / 2, 0);
     group.add(rightWall);
 
-    // Back wall
     const backWallGeo = new THREE.PlaneGeometry(CORRIDOR_WIDTH, CORRIDOR_HEIGHT);
-    const backWall = new THREE.Mesh(backWallGeo, wallMat.clone());
-    backWall.position.set(0, CORRIDOR_HEIGHT / 2, -CORRIDOR_LENGTH / 2);
-    group.add(backWall);
 
-    // Front wall (with archway opening)
-    const frontWall = new THREE.Mesh(backWallGeo, wallMat.clone());
-    frontWall.position.set(0, CORRIDOR_HEIGHT / 2, CORRIDOR_LENGTH / 2);
-    frontWall.rotation.y = Math.PI;
-    group.add(frontWall);
+    // Only close the back wall on the very last corridor
+    if (isLast) {
+      const backWall = new THREE.Mesh(backWallGeo, wallMat.clone());
+      backWall.position.set(0, CORRIDOR_HEIGHT / 2, -CORRIDOR_LENGTH / 2);
+      group.add(backWall);
+    }
+
+    // Only close the front wall on the very first corridor (entrance)
+    if (isFirst) {
+      const frontWall = new THREE.Mesh(backWallGeo, wallMat.clone());
+      frontWall.position.set(0, CORRIDOR_HEIGHT / 2, CORRIDOR_LENGTH / 2);
+      frontWall.rotation.y = Math.PI;
+      group.add(frontWall);
+    }
 
     // Crown molding (decorative strip at top of walls)
     const moldingGeo = new THREE.BoxGeometry(CORRIDOR_LENGTH, 0.15, 0.1);
@@ -392,7 +399,7 @@ export default function Gallery3D() {
 
     corridors.forEach((corridor, cIdx) => {
       const offsetZ = -cIdx * CORRIDOR_SPACING;
-      buildCorridor(scene, corridor, offsetZ);
+      buildCorridor(scene, corridor, offsetZ, cIdx === 0, cIdx === corridors.length - 1);
 
       // Place paintings on alternating walls
       const numPaintings = corridor.paintings.length;
