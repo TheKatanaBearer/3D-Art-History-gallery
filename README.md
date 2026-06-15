@@ -1,16 +1,16 @@
-# 3D Art History Gallery
+# 🏛️ 3D Art History Gallery
 
 An immersive, first-person 3D art gallery built with Next.js, Three.js, and Tailwind CSS. Walk through five interconnected corridors spanning five centuries of art history, each housing AI-generated paintings in the style of their era.
 
-## Features
+## ✨ Features
 
-- First-person navigation with pointer lock controls
-- 5 themed corridors: Renaissance, Baroque, Romantic, Impressionism, Modern Art
-- 28 AI-generated paintings with historical context
-- Click any painting to view full detail and read its history
-- Era indicator and corridor minimap
+- 🚶 First-person navigation with pointer lock controls
+- 🖼️ 5 themed corridors: Renaissance, Baroque, Romantic, Impressionism, Modern Art
+- 🎨 28 AI-generated paintings with historical context
+- 🔍 Click any painting to view full detail and read its history
+- 🗺️ Era indicator and corridor minimap
 
-## Controls
+## 🎮 Controls
 
 | Key | Action |
 |-----|--------|
@@ -19,7 +19,7 @@ An immersive, first-person 3D art gallery built with Next.js, Three.js, and Tail
 | `Click` | Lock cursor / Select painting |
 | `ESC` | Release cursor / Close painting |
 
-## Tech Stack
+## 🛠️ Tech Stack
 
 - **Next.js** — React framework
 - **Three.js** — 3D rendering
@@ -28,7 +28,7 @@ An immersive, first-person 3D art gallery built with Next.js, Three.js, and Tail
 - **Prisma + SQLite** — Database
 - **Bun** — Package manager & runtime
 
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 
